@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Elastic Shapes — Click to spawn</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --panel:#0b1220;
+      --accent:#60a5fa;
+      --muted:#94a3b8;
+      --card:#0b1220;
+      --control:#111827;
+      color-scheme: dark;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
+    body{
+      background: linear-gradient(180deg,#071227 0%, #071c2a 60%);
+      display:flex;
+      gap:16px;
+      padding:16px;
+      box-sizing:border-box;
+      align-items:flex-start;
+      color:#e6eef8;
+    }
+
+    .container{
+      display:flex;
+      gap:16px;
+      width:100%;
+      max-width:1200px;
+      margin:0 auto;
+    }
+
+    .canvas-wrap{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border:1px solid rgba(255,255,255,0.04);
+      border-radius:8px;
+      padding:12px;
+      flex:1 1 720px;
+      display:flex;
+      flex-direction:column;
+    }
+
+    canvas{
+      background:linear-gradient(180deg, rgba(7,18,39,0.6), rgba(8,20,36,0.2));
+      border-radius:6px;
+      width:100%;
+      height:640px;
+      display:block;
+      box-shadow: 0 6px 20px rgba(2,6,23,0.7);
+    }
+
+    .controls{
+      width:320px;
+      background:var(--panel);
+      border-radius:8px;
+      padding:12px;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+      min-width:280px;
+    }
+
+    .group{margin-bottom:12px;}
+    .group label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+    .row{display:flex;gap:8px;align-items:center;}
+    .slider{flex:1;}
+    input[type=range]{width:100%;}
+    .value{min-width:72px;text-align:right;font-variant-numeric:tabular-nums;color:#cfe7ff;font-size:13px}
+
+    .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+    button{
+      background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit;padding:8px 10px;border-radius:6px;cursor:pointer;
+      transition:all .12s;
+      font-size:13px;
+    }
+    button:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(96,165,250,0.06)}
+    button.active{border-color:var(--accent);box-shadow:inset 0 0 18px rgba(96,165,250,0.06);color:var(--accent);}
+
+    .small{font-size:12px;color:var(--muted);margin-top:8px}
+    .footer{margin-top:auto;font-size:12px;color:var(--muted)}
+    .stats{font-size:13px;color:#bfe0ff;margin-top:6px}
+
+    .top-controls{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+    .badge{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.02);font-size:13px}
+    .toggle{display:inline-flex;align-items:center;gap:8px}
+    .toggle input{transform:scale(1.1)}
+
+    .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="canvas-wrap">
+      <div class="top-controls">
+        <div class="badge">Elastic Shapes — Click canvas to spawn</div>
+        <div class="badge" id="objCount">Objects: 0</div>
+        <div class="badge" id="fps">FPS: 0</div>
+        <div style="flex:1"></div>
+        <button id="playPause">Pause</button>
+        <button id="clear">Clear</button>
+        <button id="addRandom">Add Random</button>
+      </div>
+
+      <canvas id="canvas" width="1000" height="640"></canvas>
+
+      <div class="hint">Shapes are simulated as circular collision bodies for stable, fast elastic collisions. Squares and triangles are drawn for variety.</div>
+    </div>
+
+    <div class="controls">
+      <div class="group">
+        <label>Spawn shape</label>
+        <div class="btns" id="shapeBtns">
+          <button data-shape="circle" class="active">Circle</button>
+          <button data-shape="square">Square</button>
+          <button data-shape="triangle">Triangle</button>
+        </div>
+        <div class="small">Click the canvas to spawn the selected shape with a random velocity.</div>
+      </div>
+
+      <div class="group">
+        <label>Time step multiplier <span class="value" id="timeVal">1.00</span></label>
+        <div class="row">
+          <input id="timeStep" class="slider" type="range" min="0.1" max="3" step="0.01" value="1">
+        </div>
+        <div class="small">Scale the physics time step (affects simulation speed & stability). Use lower values if simulation goes unstable.</div>
+      </div>
+
+      <div class="group">
+        <label>Gravity (px/s²) <span class="value" id="gravVal">500</span></label>
+        <div class="row">
+          <input id="gravity" class="slider" type="range" min="-2000" max="2000" step="10" value="500">
+        </div>
+        <div class="small">Positive = downward gravity</div>
+      </div>
+
+      <div class="group">
+        <label>Elasticity / Restitution (0 = inelastic, 1 = perfectly elastic) <span class="value" id="restVal">0.90</span></label>
+        <div class="row">
+          <input id="restitution" class="slider" type="range" min="0" max="1" step="0.01" value="0.9">
+        </div>
+        <div class="small">How bouncy collisions and wall bounces are.</div>
+      </div>
+
+      <div class="group">
+        <label>Spawn size (radius px) <span class="value" id="sizeVal">18</span></label>
+        <div class="row">
+          <input id="spawnSize" class="slider" type="range" min="6" max="48" step="1" value="18">
+        </div>
+        <div class="small">Default radius used when clicking to spawn shapes.</div>
+      </div>
+
+      <div class="group">
+        <label>Options</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="toggle"><input type="checkbox" id="showVel" checked> Show velocities</label>
+          <label class="toggle"><input type="checkbox" id="randomColor" checked> Random colors</label>
+        </div>
+      </div>
+
+      <div class="stats" id="legend">
+        Click canvas to spawn. Use sliders to adjust physics. Shapes are approximated as circles for collision — this keeps simulation stable and fast.
+      </div>
+
+      <div class="footer">Built with plain HTML/JS — modify as you like.</div>
+    </div>
+  </div>
+
+  <script>
+    // Canvas + UI references
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const timeStepSlider = document.getElementById('timeStep');
+    const timeVal = document.getElementById('timeVal');
+    const gravSlider = document.getElementById('gravity');
+    const gravVal = document.getElementById('gravVal');
+    const restSlider = document.getElementById('restitution');
+    const restVal = document.getElementById('restVal');
+    const spawnSize = document.getElementById('spawnSize');
+    const sizeVal = document.getElementById('sizeVal');
+    const shapeBtns = document.getElementById('shapeBtns');
+    const objCount = document.getElementById('objCount');
+    const playPause = document.getElementById('playPause');
+    const clearBtn = document.getElementById('clear');
+    const addRandomBtn = document.getElementById('addRandom');
+    const fpsBadge = document.getElementById('fps');
+    const showVel = document.getElementById('showVel');
+    const randomColor = document.getElementById('randomColor');
+
+    // Canvas / device pixel ratio handling
+    function resizeCanvas() {
+      // keep CSS size but adjust actual pixel buffer for crisp rendering
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Simulation state
+    let objects = []; // each: {x,y,vx,vy,r,m,shape,color,ang,angVel}
+    let lastTime = performance.now();
+    let accumulator = 0;
+    let running = true;
+
+    // UI initial sync
+    timeVal.textContent = parseFloat(timeStepSlider.value).toFixed(2);
+    gravVal.textContent = gravSlider.value;
+    restVal.textContent = parseFloat(restSlider.value).toFixed(2);
+    sizeVal.textContent = spawnSize.value;
+
+    // Constants
+    const BASE_DT = 1/60; // base fixed timestep
+    const WALL_PADDING = 2;
+
+    // Helpers
+    function rand(min, max){ return Math.random()*(max-min)+min; }
+    function randColor(){ return `hsl(${Math.floor(Math.random()*360)} ${60+Math.floor(Math.random()*20)}% ${50+Math.floor(Math.random()*10)}%)`; }
+
+    // Spawn object
+    let selectedShape = 'circle';
+    function spawn(x, y, shape=selectedShape, r=parseFloat(spawnSize.value), vx=rand(-200,200), vy=rand(-200,200)) {
+      const area = Math.PI * r * r; // mass proportional to area
+      const m = Math.max(area * 0.01, 0.1);
+      const obj = {
+        x, y, vx, vy, r, m,
+        shape,
+        color: randomColor.checked ? randColor() : '#7dd3fc',
+        ang: rand(0,Math.PI*2),
+        angVel: rand(-4,4)
+      };
+      // clamp inside bounds (in case of clicking edges)
+      obj.x = Math.max(obj.r + WALL_PADDING, Math.min(canvas.width/ (window.devicePixelRatio||1) - obj.r - WALL_PADDING, obj.x));
+      obj.y = Math.max(obj.r + WALL_PADDING, Math.min(canvas.height/ (window.devicePixelRatio||1) - obj.r - WALL_PADDING, obj.y));
+      objects.push(obj);
+      objCount.textContent = `Objects: ${objects.length}`;
+    }
+
+    // UI events
+    timeStepSlider.addEventListener('input', () => { timeVal.textContent = parseFloat(timeStepSlider.value).toFixed(2); });
+    gravSlider.addEventListener('input', () => { gravVal.textContent = gravSlider.value; });
+    restSlider.addEventListener('input', () => { restVal.textContent = parseFloat(restSlider.value).toFixed(2); });
+    spawnSize.addEventListener('input', () => { sizeVal.textContent = spawnSize.value; });
+
+    shapeBtns.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      for (const b of shapeBtns.querySelectorAll('button')) b.classList.remove('active');
+      btn.classList.add('active');
+      selectedShape = btn.dataset.shape;
+    });
+
+    canvas.addEventListener('click', (e) => {
+      // get canvas coords
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const x = (e.clientX - rect.left);
+      const y = (e.clientY - rect.top);
+      // spawn with random velocity as requested
+      spawn(x, y);
+    });
+
+    playPause.addEventListener('click', () => {
+      running = !running;
+      playPause.textContent = running ? 'Pause' : 'Resume';
+      if (running) {
+        lastTime = performance.now();
+        requestAnimationFrame(loop);
+      }
+    });
+
+    clearBtn.addEventListener('click', () => { objects = []; objCount.textContent = 'Objects: 0'; });
+
+    addRandomBtn.addEventListener('click', () => {
+      // spawn 6 random objects spread across canvas
+      const w = canvas.width/(window.devicePixelRatio||1), h = canvas.height/(window.devicePixelRatio||1);
+      for (let i=0;i<6;i++){
+        const x = rand(40, w-40), y = rand(40, h-40);
+        const shapes = ['circle','square','triangle'];
+        const sh = shapes[Math.floor(Math.random()*shapes.length)];
+        spawn(x,y,sh, rand(8,36), rand(-300,300), rand(-300,300));
+      }
+    });
+
+    // Physics core: circle-circle collisions with impulse resolution
+    function integrate(dt) {
+      const gravity = parseFloat(gravSlider.value);
+      const restitution = parseFloat(restSlider.value);
+
+      // apply gravity & integrate positions
+      for (const o of objects) {
+        o.vy += gravity * dt;
+        o.x += o.vx * dt;
+        o.y += o.vy * dt;
+        o.ang += o.angVel * dt;
+      }
+
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+
+      // wall collisions
+      for (const o of objects) {
+        // left
+        if (o.x - o.r < WALL_PADDING) {
+          o.x = o.r + WALL_PADDING;
+          if (o.vx < 0) o.vx = -o.vx * restitution;
+        }
+        // right
+        if (o.x + o.r > W - WALL_PADDING) {
+          o.x = W - WALL_PADDING - o.r;
+          if (o.vx > 0) o.vx = -o.vx * restitution;
+        }
+        // top
+        if (o.y - o.r < WALL_PADDING) {
+          o.y = o.r + WALL_PADDING;
+          if (o.vy < 0) o.vy = -o.vy * restitution;
+        }
+        // bottom
+        if (o.y + o.r > H - WALL_PADDING) {
+          o.y = H - WALL_PADDING - o.r;
+          if (o.vy > 0) o.vy = -o.vy * restitution;
+        }
+      }
+
+      // pairwise collisions (O(n^2) — fine for moderate counts)
+      for (let i=0;i<objects.length;i++){
+        for (let j=i+1;j<objects.length;j++){
+          const A = objects[i], B = objects[j];
+          const dx = B.x - A.x;
+          const dy = B.y - A.y;
+          let dist2 = dx*dx + dy*dy;
+          const rSum = A.r + B.r;
+          if (dist2 >= rSum*rSum) continue; // no collide
+          let dist = Math.sqrt(dist2);
+          if (dist === 0) {
+            // jitter to avoid exact overlap
+            dist = 0.001;
+          }
+          // collision normal
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          // penetration resolution (positional correction)
+          const penetration = rSum - dist;
+          const totalMass = A.m + B.m;
+          // push them apart proportional to inverse mass
+          const correctionFactor = 0.8; // slop to avoid jitter
+          const correctionX = nx * penetration * correctionFactor;
+          const correctionY = ny * penetration * correctionFactor;
+          A.x -= correctionX * (B.m / totalMass);
+          A.y -= correctionY * (B.m / totalMass);
+          B.x += correctionX * (A.m / totalMass);
+          B.y += correctionY * (A.m / totalMass);
+
+          // relative velocity
+          const rvx = B.vx - A.vx;
+          const rvy = B.vy - A.vy;
+          const velAlongNormal = rvx*nx + rvy*ny;
+
+          // do not resolve if velocities are separating
+          if (velAlongNormal > 0) continue;
+
+          // compute impulse scalar
+          const e = restitution; // global
+          const j = -(1 + e) * velAlongNormal / (1/A.m + 1/B.m);
+
+          const impulseX = j * nx;
+          const impulseY = j * ny;
+
+          A.vx -= impulseX / A.m;
+          A.vy -= impulseY / A.m;
+          B.vx += impulseX / B.m;
+          B.vy += impulseY / B.m;
+
+          // tiny damping to reduce energy drift on collisions
+          const damping = 0.999;
+          A.vx *= damping;
+          A.vy *= damping;
+          B.vx *= damping;
+          B.vy *= damping;
+        }
+      }
+    }
+
+    // Rendering
+    function draw() {
+      // clear
+      ctx.fillStyle = '#07192b';
+      ctx.fillRect(0,0,canvas.width/(window.devicePixelRatio||1),canvas.height/(window.devicePixelRatio||1));
+
+      // draw boundary
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.lineWidth = 1;
+      const W = canvas.width/(window.devicePixelRatio||1);
+      const H = canvas.height/(window.devicePixelRatio||1);
+      ctx.strokeRect(W*0.001 + WALL_PADDING, WALL_PADDING, W - WALL_PADDING*2 - W*0.002, H - WALL_PADDING*2);
+
+      // objects
+      for (const o of objects) {
+        ctx.save();
+        ctx.translate(o.x, o.y);
+        ctx.rotate(o.ang);
+
+        // fill shape depending on type
+        if (o.shape === 'circle') {
+          ctx.beginPath();
+          ctx.fillStyle = ctx.strokeStyle = o.color;
+          ctx.globalAlpha = 0.95;
+          ctx.arc(0,0,o.r,0,Math.PI*2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.stroke();
+        } else if (o.shape === 'square') {
+          ctx.fillStyle = o.color;
+          ctx.beginPath();
+          ctx.rect(-o.r,-o.r, o.r*2, o.r*2);
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.stroke();
+        } else if (o.shape === 'triangle') {
+          ctx.fillStyle = o.color;
+          ctx.beginPath();
+          ctx.moveTo(0,-o.r);
+          ctx.lineTo(o.r, o.r);
+          ctx.lineTo(-o.r, o.r);
+          ctx.closePath();
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.stroke();
+        }
+
+        // outline collision radius (subtle)
+        ctx.beginPath();
+        ctx.arc(0,0,o.r,0,Math.PI*2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.restore();
+
+        // velocity arrow
+        if (showVel.checked) {
+          const speed = Math.hypot(o.vx, o.vy);
+          if (speed > 8) {
+            ctx.beginPath();
+            ctx.moveTo(o.x, o.y);
+            ctx.lineTo(o.x + o.vx*0.08, o.y + o.vy*0.08);
+            ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // arrow head
+            const ang = Math.atan2(o.vy, o.vx);
+            ctx.beginPath();
+            ctx.moveTo(o.x + o.vx*0.08, o.y + o.vy*0.08);
+            ctx.lineTo(o.x + o.vx*0.08 - 6*Math.cos(ang-0.6), o.y + o.vy*0.08 - 6*Math.sin(ang-0.6));
+            ctx.lineTo(o.x + o.vx*0.08 - 6*Math.cos(ang+0.6), o.y + o.vy*0.08 - 6*Math.sin(ang+0.6));
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,255,255,0.65)';
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // Main loop with fixed-step integration using time step multiplier
+    let frames = 0, lastFPS = performance.now();
+    function loop(now) {
+      if (!running) return;
+      const dtMs = now - lastTime;
+      lastTime = now;
+
+      // update FPS counter every 250ms
+      frames++;
+      if (now - lastFPS > 250) {
+        const fps = Math.round(frames * 1000 / (now - lastFPS));
+        fpsBadge.textContent = `FPS: ${fps}`;
+        frames = 0;
+        lastFPS = now;
+      }
+
+      const timeScale = parseFloat(timeStepSlider.value);
+      // clamp to reasonable
+      const maxSimTime = 0.05; // avoid huge step on tab switch
+      const deltaSeconds = Math.min(dtMs / 1000, maxSimTime) * timeScale;
+
+      // break into fixed substeps for stability
+      // choose a fixed dt close to BASE_DT but adapt for big timeScale
+      const fixed = BASE_DT;
+      let accumulator = deltaSeconds;
+      // limit substeps
+      const maxSteps = 8;
+      let steps = Math.min(maxSteps, Math.ceil(accumulator / fixed));
+      if (steps <= 0) steps = 1;
+      const stepDt = accumulator / steps;
+      for (let i=0;i<steps;i++){
+        integrate(stepDt);
+      }
+
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // Kick off
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+
+    // allow dropping many objects by dragging (optional)
+    let mouseDown = false;
+    canvas.addEventListener('mousedown', () => { mouseDown = true; });
+    window.addEventListener('mouseup', () => { mouseDown = false; });
+    canvas.addEventListener('mousemove', (e) => {
+      if (!mouseDown) return;
+      // spawn lightly while dragging
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left);
+      const y = (e.clientY - rect.top);
+      // small spawn probability to avoid overload
+      if (Math.random() < 0.18) spawn(x,y);
+    });
+
+    // seed demo
+    (function seedDemo(){
+      const W = canvas.width/(window.devicePixelRatio||1);
+      const H = canvas.height/(window.devicePixelRatio||1);
+      const demo = [
+        ['circle', 80, 80], ['square', 200, 60], ['triangle', 320, 90],
+        ['circle', 120, 220], ['square', 300, 230], ['triangle', 420, 160]
+      ];
+      for (const [sh,x,y] of demo) {
+        spawn(x,y,sh, rand(12,28), rand(-120,120), rand(-30,30));
+      }
+    })();
+  </script>
+</body>
+</html>
